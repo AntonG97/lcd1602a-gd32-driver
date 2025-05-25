@@ -95,13 +95,11 @@ gpiooc:
 ##################################################################################################################################
 #GPIOx input status
 #a0 -> target GPIO module
-#a1 -> Bits
 gpiois:
     mv t0, a0           #t0 bolds base adress
     lw a0, ISTAT(t0)    #Get input status register
 
     ret
-
 /////////////////////////////////////////////////////////////////////////////////////
 // RCU Reset and Clock Unit Subroutine package                         0.91 AC
 /////////////////////////////////////////////////////////////////////////////////////
@@ -214,7 +212,7 @@ LCDgpioi:
         li a0, GPIOB            #E, R/W, RS [b2, b1, b0]
         li a1, CO_GPIO_PP       #conf push-pull (default pull)
         li a2, MO_GPIO_2        #mode 2MHz speed
-        li a3, 0                #target pins [a7 - a0]
+        li a3, 0                #target pins [b2 - b0]
         li a4, 3
 1:      call gpioi              #Config 
         addi a3, a3, 1      
@@ -224,6 +222,61 @@ LCDgpioi:
         addi sp, sp, 4
 
         ret
+#Check if LCD driver is busy (BF = 1)
+lcdIsBusy:
+        addi sp, sp, -4
+        sw ra, 0(sp)
+
+        li a0, GPIOA
+        li a1, 0x0
+        li a2, 0x0FF
+        call gpiobo             #Set Data bits to 0
+
+        li a0, GPIOB
+        li a1, 0x2
+        li a2, 0x2
+        call gpiobo             #Set R/W HIGH
+        #call t5exp
+
+
+        li a0, GPIOA            #Set data pins [a7 - a0] as inputs!
+        li a1, CI_GPIO_UD       #conf push-pull (default pull)
+        li a2, 0                
+        li a3, 0                #target pins [a7 - a0]
+        li a4, 8
+1:      call gpioi              #Config 
+        addi a3, a3, 1      
+        bne a3,a4,1b            #Continue until all 8 conf
+
+        call lcdEN_set          #Set enable HIGH
+
+        #call t5exp              #Wait
+1:      li a0, GPIOA
+        call gpiois             #a0 holds ISTAT register word
+        srli a0, a0, 7          #Get BF at a7
+        andi a0, a0, 1          #Mask out BF
+        bnez a0, 1b             #Continue while BF = 1
+
+        call lcdEn_res          #Set enable low
+
+        li a0, GPIOB
+        li a1, 0x0
+        li a2, 0x2
+        call gpiobo             #Set R/W LOW
+
+        li a0, GPIOA            #Data pins [a7 - a0] => Revert back as outputs
+        li a1, CO_GPIO_PP       #conf push-pull (default pull)
+        li a2, MO_GPIO_2        #mode 2MHz speed
+        li a3, 0                #target pins [a7 - a0]
+        li a4, 8
+1:      call gpioi              #Config 
+        addi a3, a3, 1      
+        bne a3,a4,1b            #Continue until all 8 conf
+
+        lw ra, 0(sp)
+        addi sp, sp, 4
+        ret
+
 #Send LCD instruction. 
 .equ OFF,     0x00            #Display off
 .equ CLEAR,   0x01            #Clear display
@@ -238,15 +291,18 @@ LCD_IR:
         addi sp, sp, -4
         sw ra, 0(sp)
 
-        mv t0, a0                #Save instruction into t0
+        
+        mv a7, a0                #Save instruction into t0
+
+        call lcdIsBusy
+
         call lcdEN_set
-        mv a0, t0
-        call lcdData_w           #Function set (Interface is 8 bits long)
+        mv a0, a7
+        call lcdData_w           
         call t5wait
         call lcdEn_res
         li a0, 0x0
         call lcdData_w
-        call t5wait
 
         lw ra, 0(sp)
         addi sp, sp, 4
@@ -260,7 +316,9 @@ LCD_data:
         addi sp, sp, -4
         sw ra, 0(sp)
         
-        mv t1, a0               #Store data in t0
+        mv a6, a0               #Store data in t0
+
+        call lcdIsBusy          #Check if busy
 
         li a0, GPIOB            
         li a1, 0x1
@@ -268,15 +326,13 @@ LCD_data:
         call gpiobo             #RS = High
         call t5exp              #WAIT
 
-       # mv t0, a0                #Save instruction into t0
-        call lcdEN_set
-        mv a0, t1
-        call lcdData_w           #Function set (Interface is 8 bits long)
-        call t5wait
+        call lcdEN_set          #Enable = HIGH
+        mv a0, a6
+        call lcdData_w          #Write data
+        call t5wait             #Wait 
         call lcdEn_res
         li a0, 0x0
         call lcdData_w
-        call t5wait
 
         li a0, GPIOB            
         li a1, 0x0
@@ -286,6 +342,7 @@ LCD_data:
         lw ra, 0(sp)
         addi sp, sp, 4
         ret
+
 #Followig the flow chart provided in the datasheet
 lcdfsm:
         addi sp, sp, -4
@@ -298,57 +355,52 @@ lcdfsm:
 
         li a0, FUNC
         call LCD_IR             #Set 2 8-bit interface and 2 lines
-
+        call t5wait
+        
         li a0, OFF
         call LCD_IR             #Display off
-
+        call t5wait
+        
         li a0, CLEAR
         call LCD_IR             #Clear display
+        call t5wait
 
         li a0, MOV
         call LCD_IR             #Assign cursor moving dir (left) 
- 
+        call t5wait
+
         li a0, ON
         call LCD_IR             #Display ON. Display curson. Display blinking of cursor
+        call t5wait
+
+        li a0, 0x14
+        call LCD_IR
+        call t5wait
+
+        li a0, 0x0000    # PSC = 0
+        li a1, 0x0018    # ARR = 24
+        call t5init      #Reinit t5 on 231.5 ns
 
 #####################DBG
-#Hi!
-        li a0, 0x48
-        call LCD_data
-        li a0, 0x49
-        call LCD_data
-        li a0, 0x21
-        call LCD_data
-########################
-#Home
-#Qi!
-        li a0, RET
-        call LCD_IR
-
-        li a0, 0x52
-        call LCD_data
-########################
-#Clear
-        li a0, CLEAR
-        call LCD_IR
-#######################
-#Hello!
-        li a0, 0x48
+        li a0, 'E'
         call LCD_data
 
-        li a0, 0x45
+        li a0, 'M'
         call LCD_data
 
-        li a0, 0x4c
+        li a0, 'M'
         call LCD_data
 
-        li a0, 0x4c
+        li a0, 'A'
         call LCD_data
 
-        li a0, 0x4f
+        li a0, '!'
         call LCD_data
-
-        li a0, ' '
+        li a0, '!'
+        call LCD_data
+        li a0, '!'
+        call LCD_data
+        li a0, '!'
         call LCD_data
 
         li a0, 'E'
@@ -365,9 +417,15 @@ lcdfsm:
 
         li a0, '!'
         call LCD_data
+        li a0, '!'
+        call LCD_data
+        li a0, '!'
+        call LCD_data
+        li a0, '!'
+        call LCD_data
+
+
 ###############################
-
-
         lw ra, 0(sp)
         addi sp, sp, 4
 
@@ -379,19 +437,16 @@ LCDinit:
         addi sp, sp, -4
         sw ra, 0(sp)
 
-        li a0, 0x006B     # 107 decimal (prescaler)
-        li a1, 0x03E7     # 999 decimal (ARR)
-
-        call t5init             # Initiera Timer 5 för 1 Hz blink (1 sekund)
+        li a0, 0x006B           # 107 decimal (prescaler)
+        li a1, 0x03E7           # 999 decimal (ARR)
+        call t5init             #Init timer 5 1kHz (1ms)
 
         call LCDgpioi           #Init gpio pins
 
         call lcdfsm             #Flowchart datasheet
 
-
         lw ra, 0(sp)
         addi sp, sp, 4
-
         ret
 
 #Set enable pin HIGH [b2]
