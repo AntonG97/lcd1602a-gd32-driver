@@ -286,6 +286,7 @@ lcdIsBusy:
 .equ MOV,     0x06            #Assign curos moving dir (left)
 .equ FUNC,    0x38            #Set 2 8-bit interface and 2 lines
 .equ ON,      0x0F            #Display ON. Display curson. Display blinking of cursor
+.equ SET_CUR, 0x80            #Set cursor at specific adress
 #a0 -> contains instruction
 LCD_IR:
         addi sp, sp, -4
@@ -406,6 +407,9 @@ lcdfsm:
        #        li a0, 0x1C
         #call LCD_IR
        #call t5wait
+       li a0, 2
+       li a1, 5
+       call lcd_set_cursor
 
         lw ra, 0(sp)
         addi sp, sp, 4
@@ -506,10 +510,22 @@ lcd_home:
         ret
 
 #Set cursor at arbitrarily coordinates [check bound]
+#a0 -> row [0 1]
+#a1 -> col [0 - 15]
 .globl lcd_set_cursor
 lcd_set_cursor:
         addi sp, sp, -4
         sw ra, 0(sp)
+
+        andi a0, a0, 0x01       #make sure that a0 is either 1 or 0
+        andi a1, a1, 0x0F       #Make sure that a1 is in range [15 - 0]
+        beqz a0, 1f             #If a0 == 0  
+        slli a0, a0, 6          #Shift 1 up to 4
+1:
+        or a0, a0, a1
+        or a0, a0, SET_CUR
+        #li a0, SET_CUR
+        call LCD_IR
 
         lw ra, 0(sp)
         addi sp, sp, 4
