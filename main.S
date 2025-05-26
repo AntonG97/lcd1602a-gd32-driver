@@ -135,7 +135,6 @@ rcu2en: li t0,RCU           // t0 points to RCU...
 
 #a0 -> Prescaler (16-bit val)
 #a1 -> Counter auto reload (16-bit)
-.globl t5init
 t5init:
         addi sp, sp, -4         #Push: Make room on the stack
         sw ra, 0(sp)            #For another return adress
@@ -159,7 +158,6 @@ t5init:
         ret
 
 #Check if timer has expired, i.e if UPIF has been set to 1! Reset UPIF
-.globl t5exp
 t5exp:
         li t0, TIMER5
         lw a0, UPIF(t0) 
@@ -188,9 +186,13 @@ t5wait:
         ret
 
 #Timer 5 subroutine package end
-#################################################################################################################################################
-#LCD subroutine package
 
+
+#####################################################################################################################################################
+#LCD subroutine package
+#####################################################################################################################################################
+#Private LCD functionality 
+#####################################################################################################################################################
 #Initialize LCD gpio pins
 LCDgpioi:
         addi sp, sp, -4        
@@ -236,8 +238,7 @@ lcdIsBusy:
         li a1, 0x2
         li a2, 0x2
         call gpiobo             #Set R/W HIGH
-        #call t5exp
-
+        call t5exp
 
         li a0, GPIOA            #Set data pins [a7 - a0] as inputs!
         li a1, CI_GPIO_UD       #conf push-pull (default pull)
@@ -257,6 +258,7 @@ lcdIsBusy:
         andi a0, a0, 1          #Mask out BF
         bnez a0, 1b             #Continue while BF = 1
 
+        call t5exp              
         call lcdEn_res          #Set enable low
 
         li a0, GPIOB
@@ -284,25 +286,25 @@ lcdIsBusy:
 .equ MOV,     0x06            #Assign curos moving dir (left)
 .equ FUNC,    0x38            #Set 2 8-bit interface and 2 lines
 .equ ON,      0x0F            #Display ON. Display curson. Display blinking of cursor
-
 #a0 -> contains instruction
-.globl LCD_IR
 LCD_IR:
         addi sp, sp, -4
         sw ra, 0(sp)
 
-        
-        mv a7, a0                #Save instruction into t0
+        addi sp,sp,-4
+        sw a0, 0(sp)             #Allocate memory for a0
 
         call lcdIsBusy
 
         call lcdEN_set
-        mv a0, a7
+        lw a0, 0(sp)            #Get value stored in allocated mem
         call lcdData_w           
-        call t5wait
+        call t5wait             
         call lcdEn_res
         li a0, 0x0
         call lcdData_w
+
+        addi sp, sp, 4          #Return allocated mem
 
         lw ra, 0(sp)
         addi sp, sp, 4
@@ -311,13 +313,13 @@ LCD_IR:
 
 #Send LCD data
 #a0 -> contains data
-.globl LCD_data
 LCD_data:
         addi sp, sp, -4
-        sw ra, 0(sp)
-        
-        mv a6, a0               #Store data in t0
+        sw ra, 0(sp)            #Save return adress
 
+        addi sp,sp,-4
+        sw a0, 0(sp)            #Allocate memory for a0
+        
         call lcdIsBusy          #Check if busy
 
         li a0, GPIOB            
@@ -327,7 +329,7 @@ LCD_data:
         call t5exp              #WAIT
 
         call lcdEN_set          #Enable = HIGH
-        mv a0, a6
+        lw a0, 0(sp)            #Get val stored in allocated mem
         call lcdData_w          #Write data
         call t5wait             #Wait 
         call lcdEn_res
@@ -339,18 +341,25 @@ LCD_data:
         li a2, 0x1
         call gpiobo             #RS = LOW
 
-        lw ra, 0(sp)
+        addi sp, sp, 4          #Return alloc mem
+
+        lw ra, 0(sp)        
         addi sp, sp, 4
         ret
 
+####################################################################################################################################################
 #Followig the flow chart provided in the datasheet
 lcdfsm:
         addi sp, sp, -4
         sw ra, 0(sp)
 
         call t5wait             #Wait for more than 15 ms after Vcc rises to 4.5V
+
+        li a0, 0x006B           #Prescaler
+        li a1, 0x03E7           #Counter Auto Reload
+        call t5init             #Reinit T5 for 1kHz (1 ms delay)
             
-        #li a0, 0x30
+       # li a0, 0x30
         #call LCD_IR             #Function set (I.F is 8-bits long)
 
         li a0, FUNC
@@ -372,83 +381,36 @@ lcdfsm:
         li a0, ON
         call LCD_IR             #Display ON. Display curson. Display blinking of cursor
         call t5wait
+   
 
-        li a0, 0x14
-        call LCD_IR
-        call t5wait
+       # li a0, 0x14            #Shift cursor left
+       # call LCD_IR
+      # call t5wait
 
-        li a0, 0x0000    # PSC = 0
-        li a1, 0x0018    # ARR = 24
-        call t5init      #Reinit t5 on 231.5 ns
+        li a0, 0x0000    #Prescaler
+        li a1, 0x0018    #Counter Auto Reload
+        call t5init      #Reinit t5 on 231.5 ns delays
 
-#####################DBG
-        li a0, 'E'
-        call LCD_data
+        call lcd_writeStr #####DBG
 
-        li a0, 'M'
-        call LCD_data
+        li a0, 'K'
+        call lcd_writeCh
 
-        li a0, 'M'
-        call LCD_data
+       # li a0, 0x1C             #Shift entire displ left
+       # call LCD_IR
+       #call t5wait
+        
+       # li a0, 0x1C
+       # call LCD_IR
+       #call t5wait
+       #        li a0, 0x1C
+        #call LCD_IR
+       #call t5wait
 
-        li a0, 'A'
-        call LCD_data
-
-        li a0, '!'
-        call LCD_data
-        li a0, '!'
-        call LCD_data
-        li a0, '!'
-        call LCD_data
-        li a0, '!'
-        call LCD_data
-
-        li a0, 'E'
-        call LCD_data
-
-        li a0, 'M'
-        call LCD_data
-
-        li a0, 'M'
-        call LCD_data
-
-        li a0, 'A'
-        call LCD_data
-
-        li a0, '!'
-        call LCD_data
-        li a0, '!'
-        call LCD_data
-        li a0, '!'
-        call LCD_data
-        li a0, '!'
-        call LCD_data
-
-
-###############################
         lw ra, 0(sp)
         addi sp, sp, 4
 
         ret
-
-#Init LCD including GPIO pins and internal driver
-.globl LCDinit
-LCDinit:
-        addi sp, sp, -4
-        sw ra, 0(sp)
-
-        li a0, 0x006B           # 107 decimal (prescaler)
-        li a1, 0x03E7           # 999 decimal (ARR)
-        call t5init             #Init timer 5 1kHz (1ms)
-
-        call LCDgpioi           #Init gpio pins
-
-        call lcdfsm             #Flowchart datasheet
-
-        lw ra, 0(sp)
-        addi sp, sp, 4
-        ret
-
 #Set enable pin HIGH [b2]
 lcdEN_set:
         addi sp, sp, -4
@@ -482,19 +444,122 @@ lcdData_w:
         addi sp, sp, -4
         sw ra, 0(sp)
 
-        andi a4, a0, 0x0FF       #Mask out data bits
-
+        andi a1, a0, 0x0FF       #Mask out data bits
         li a0, GPIOA
-        mv a1, a4               #Data
         li a2, 0x0FF            #Target pins [a7 - a0]
         call gpiobo
 
         lw ra, 0(sp)
         addi sp, sp, 4
         ret
+#####################################################################################################################################################
+#Public LCD functionality
+#Init LCD including GPIO pins and internal driver
+.globl lcd_init
+lcd_init:
+        addi sp, sp, -4
+        sw ra, 0(sp)
+
+        li a0, 0x006B           #Prescaler
+        li a1, 0x4E1F           #Counter Auto Reload
+        call t5init             #Init T5 20 ms delays
+
+        call LCDgpioi           #Init gpio pins
+
+        call lcdfsm             #Flowchart datasheet
+
+        lw ra, 0(sp)
+        addi sp, sp, 4
+        ret
+
+.section .rodata
+stringer:
+    .asciz "Hello Penis!"
+#Print a NULL terminated string into LED
+#a0 -> contain pointer to char array, NULL terminated
+.section .text
+
+#Clear screen
+.globl lcd_clear
+lcd_clear:
+        addi sp, sp, -4
+        sw ra, 0(sp)
+
+        li a0, CLEAR
+        call LCD_IR
+
+        lw ra, 0(sp)
+        addi sp, sp, 4
+        ret
+
+#Return cursor to coordinate (0,0)
+.globl lcd_home
+lcd_home:
+        addi sp, sp, -4
+        sw ra, 0(sp)
+        
+        li a0, RET
+        call LCD_IR
+
+        lw ra, 0(sp)
+        addi sp, sp, 4
+        ret
+
+#Set cursor at arbitrarily coordinates [check bound]
+.globl lcd_set_cursor
+lcd_set_cursor:
+        addi sp, sp, -4
+        sw ra, 0(sp)
+
+        lw ra, 0(sp)
+        addi sp, sp, 4
+        ret
+
+#Writes a character to LCD
+#a0 -> Contains char
+.globl lcd_writeCh
+lcd_writeCh:
+        addi sp, sp, -4
+        sw ra, 0(sp)
+
+        call LCD_data
+
+        lw ra, 0(sp)
+        addi sp, sp, 4
+        ret
+
+#Writes a NULL terminated string to LCD
+#a0 -> Pointer to NULL terminated char array
+.globl lcd_writeStr
+lcd_writeStr:
+
+        addi sp, sp, -4
+        sw ra, 0(sp)       
+
+        la a0, stringer #DBG DBG DBG
+
+        addi sp, sp, -4
+        sw a0, 0(sp)            #Save pointer to char array on stack
+        
+loop:
+        lw t0, 0(sp)
+        lb a0, 0(t0)            #Get next char
+        beqz a0, break          #If NULL, break loop
+        call LCD_data           #Write data
+
+        lw a0, 0(sp)
+        addi a0, a0, 1          #Increment adress
+        sw a0, 0(sp)
+        j loop                  
+break:
+
+        addi sp, sp, 4          #Release allocated mem
+
+        lw ra, 0(sp)
+        addi sp, sp, 4
+        ret
 #LCD subroutine package end
 ###################################################################################################################################################
-
 .globl main
 main:   
 
@@ -502,7 +567,7 @@ main:
         #li a0, 0x0707           # Prescaler = 1799
         #li a1, 0x0707           # Counter (ARR) = 1799
         #call t5init             # Initiera Timer 5 för 30 ms period
-        call LCDinit             #Init LCD
+        call lcd_init            #Init LCD
 
 
 1:
