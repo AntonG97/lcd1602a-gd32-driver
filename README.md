@@ -20,5 +20,5 @@ The driver is written in Assembly.
 | VSS     | GND            | -         | -          | Jord                             |
 | VDD     | 5V / 3.3V      | -         | -          | Matningsspänning                 |
 | VO      | Kontrast       | -         | Potentiometer (10Kohm) -> Justera kontrast    |
-| A       | Anode. Add resistor        |                                               |
-| K       | Cathode. Add to GND                                                        |
+| A       | Anode          | -         | -          | Add resistor                     |
+| K       | Cathode        | -         | -          | To GND                           |
