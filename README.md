@@ -1,7 +1,7 @@
 Driver for LCD1602A for GD32VF103CBTx MCU (Used in HE1028 Embedded Systems course)
 The driver is written in Assembly. 
 
-##Dependencies: Timer 5. Blocks when writing data (for about 230 ns)
+## Dependencies: Timer 5. Blocks when writing data (for about 230 ns)
 ## LCD-koppling (8-bitars HD44780-liknande LCD)
 
 | LCD Pin | Funktion       | GPIO Port | Pin        | Beskrivning                      |
