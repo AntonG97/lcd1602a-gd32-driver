@@ -281,6 +281,7 @@ lcdIsBusy:
 
 #Send LCD instruction. 
 .equ OFF,     0x00            #Display off
+.equ _ON,      0x0C           #Display ON
 .equ CLEAR,   0x01            #Clear display
 .equ RET,     0x02            #Return home (DDRAM adress to 0)
 .equ MOV,     0x06            #Assign curos moving dir (left)
@@ -382,34 +383,17 @@ lcdfsm:
         li a0, ON
         call LCD_IR             #Display ON. Display curson. Display blinking of cursor
         call t5wait
-   
 
-       # li a0, 0x14            #Shift cursor left
-       # call LCD_IR
-      # call t5wait
-
+        #Setup complete. Change timer config...
         li a0, 0x0000    #Prescaler
         li a1, 0x0018    #Counter Auto Reload
         call t5init      #Reinit t5 on 231.5 ns delays
+        #...Done! 
 
-        call lcd_writeStr #####DBG
+        #Create user icons
+        call lcd_createIcon
 
-        li a0, 'K'
-        call lcd_writeCh
-
-       # li a0, 0x1C             #Shift entire displ left
-       # call LCD_IR
-       #call t5wait
-        
-       # li a0, 0x1C
-       # call LCD_IR
-       #call t5wait
-       #        li a0, 0x1C
-        #call LCD_IR
-       #call t5wait
-       li a0, 2
-       li a1, 5
-       call lcd_set_cursor
+        #call lcd_writeStr #####DBG
 
         lw ra, 0(sp)
         addi sp, sp, 4
@@ -450,11 +434,158 @@ lcdData_w:
 
         andi a1, a0, 0x0FF       #Mask out data bits
         li a0, GPIOA
-        li a2, 0x0FF            #Target pins [a7 - a0]
+        li a2, 0x0FF             #Target pins [a7 - a0]
         call gpiobo
 
         lw ra, 0(sp)
         addi sp, sp, 4
+        ret
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//User defined icons
+.section .data
+amount: .byte 8                  #Amount of icons. Increment if added more icons!
+
+.section .rodata
+icon:   .word battery_empty
+        .word battery_25
+        .word battery_50
+        .word battery_75
+        .word battery_100
+        .word temp
+        .word add_one
+        .word add_two
+
+battery_empty:
+        .byte 0b1000000           #CGRAM adress = 0
+        .byte 0b00100
+        .byte 0b11111
+        .byte 0b10001
+        .byte 0b10001
+        .byte 0b10001
+        .byte 0b10001
+        .byte 0b11111
+        .byte 0b00000
+battery_25:
+        .byte 0b1001000           #CGRAM adress = 1
+        .byte 0b00100
+        .byte 0b11111
+        .byte 0b10001
+        .byte 0b10001
+        .byte 0b10001
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b00000
+battery_50:
+        .byte 0b1010000           #CGRAM adress = 2
+        .byte 0b00100
+        .byte 0b11111
+        .byte 0b10001
+        .byte 0b10001
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b00000
+battery_75:
+        .byte 0b1011000           #CGRAM adress = 3
+        .byte 0b00100
+        .byte 0b11111
+        .byte 0b10001
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b00000
+battery_100:
+        .byte 0b1100000           #CGRAM adress = 4
+        .byte 0b00100
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b00000
+temp:
+        .byte 0b1101000           #CGRAM adress = 5
+        .byte 0b00100
+        .byte 0b01010
+        .byte 0b01010
+        .byte 0b01110
+        .byte 0b01110
+        .byte 0b11111
+        .byte 0b11111
+        .byte 0b01110
+add_one: #Implement new icon
+        .byte 0b1110000           #CGRAM adress = 6
+        .byte 0b10001
+        .byte 0b01010
+        .byte 0b00100
+        .byte 0b00100
+        .byte 0b00100
+        .byte 0b01010
+        .byte 0b10001
+        .byte 0b00000
+add_two: #Implement new icon
+        .byte 0b1111000           #CGRAM adress = 7
+        .byte 0b10001
+        .byte 0b01010
+        .byte 0b00100
+        .byte 0b00100
+        .byte 0b00100
+        .byte 0b01010
+        .byte 0b10001
+        .byte 0b00000
+//User defined icons END
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+.section .text
+lcd_createIcon:
+        addi sp, sp, -16        #Create room on stack!
+        sw ra, 12(sp)           #...Save return adress
+        sw s0, 8(sp)            #...Save contents in s0. S0 = adress to icon
+        sw s1, 4(sp)            #...Save contents in s1. s1 = decrement variable
+        sw s2, 0(sp)            #...Save contents in s2. s2 = Temp data
+
+       # la s2, amount           
+        #lb s2, 0(s2)            #s2 holds amount of icons to write
+        #li s2, 0
+        li t0, 0
+start_loop:
+        mv s2, t0
+        la s0, icon    #DBG!!!!!!!!!!!!!!! TODO: Fix so that s0 loops through ALL symbols
+        add s0, s0, s2          #Add s2 offset to s0
+        lw s0, 0(s0)
+        lb a0, 0(s0)            #Load a0 with adress of next icon
+        call LCD_IR             #Set CGRAM adress 
+
+        li s1, 8                #Loop thorugh icon data bytes
+cont:
+        addi s0, s0, 1          #Increment icon adress
+        lb a0, 0(s0)            #Get next data byte
+        call LCD_data           #Write it to LCD
+        addi s1, s1, -1         #Decrement loop var
+        bnez s1, cont     
+
+        addi s2, s2, 4          #Increase s2 offset by 4 bytes (next icon)
+        mv t0, s2               #t0 temp holds s2 offset
+        la s2, amount           
+        lb s2, 0(s2)            #s2 holds amount of icons to write
+        addi s2, s2, -1         #Decrement s2...
+        mv t1, s2
+        la s2, amount
+        sb t1, 0(s2)            #...Save s2
+        bnez t1, start_loop     #...Continue until all icons has been written to CGRAM 
+
+        #Set DDRAM adress to 0
+        li a0, RET
+        call LCD_IR
+                
+        lw ra, 12(sp)           #Restore all registers...
+        lw s0, 8(sp)            #...
+        lw s1, 4(sp)            #...
+        lw s2, 0(sp)            #...
+        addi sp, sp, 16         #POP stack
+
         ret
 #####################################################################################################################################################
 #Public LCD functionality
@@ -475,13 +606,6 @@ lcd_init:
         lw ra, 0(sp)
         addi sp, sp, 4
         ret
-
-.section .rodata
-stringer:
-    .asciz "Hello Penis!"
-#Print a NULL terminated string into LED
-#a0 -> contain pointer to char array, NULL terminated
-.section .text
 
 #Clear screen
 .globl lcd_clear
@@ -524,7 +648,6 @@ lcd_set_cursor:
 1:
         or a0, a0, a1
         or a0, a0, SET_CUR
-        #li a0, SET_CUR
         call LCD_IR
 
         lw ra, 0(sp)
@@ -544,15 +667,19 @@ lcd_writeCh:
         addi sp, sp, 4
         ret
 
-#Writes a NULL terminated string to LCD
-#a0 -> Pointer to NULL terminated char array
+.section .rodata
+stringer:
+    .asciz "Hello W!"
+#Print a NULL terminated string into LED
+#a0 -> contain pointer to char array, NULL terminated
+.section .text
 .globl lcd_writeStr
 lcd_writeStr:
 
         addi sp, sp, -4
         sw ra, 0(sp)       
 
-        la a0, stringer #DBG DBG DBG
+        #la a0, stringer #DBG DBG DBG CHANGE when fixing header file. A0 from outside
 
         addi sp, sp, -4
         sw a0, 0(sp)            #Save pointer to char array on stack
@@ -574,41 +701,29 @@ break:
         lw ra, 0(sp)
         addi sp, sp, 4
         ret
+
+.globl lcd_display_on
+lcd_display_on:
+        addi sp, sp, -4
+        sw ra, 0(sp)
+
+        li a0, _ON
+        call LCD_IR
+
+        lw ra, 0(sp)
+        addi sp, sp, 4
+        ret
+
+.globl lcd_display_off
+lcd_display_off:
+        addi sp, sp, -4
+        sw ra, 0(sp)
+
+        li a0, OFF
+        call LCD_IR
+
+        lw ra, 0(sp)
+        addi sp, sp, 4
+        ret
 #LCD subroutine package end
 ###################################################################################################################################################
-.globl main
-main:   
-
-        #call LCDgpioi
-        #li a0, 0x0707           # Prescaler = 1799
-        #li a1, 0x0707           # Counter (ARR) = 1799
-        #call t5init             # Initiera Timer 5 för 30 ms period
-        call lcd_init            #Init LCD
-
-
-1:
-        j 1b
-       ## li a0, GPIOA
-        ##li a1, 0x0F1    #DBG: All A
-        #li a2, 0x0FF    #all
-        #call gpiobo
-
-        li a0, GPIOB
-        li a1, 0x5
-        li a2, 0x7
-       call gpiobo
-
-        li a0, GPIOA
-        li a1, 0
-        li a2, 0x0FF
-
-1:
-        call t5wait
-        li a0, GPIOA
-        li a2, 0x0FF
-        addi a1, a1, 1
-        call gpiobo
-        j 1b
-
-
-
