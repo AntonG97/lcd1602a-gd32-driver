@@ -55,7 +55,6 @@ typedef enum {
     SIXTEEN         = 15
 } Cursor_col;
 
-
 //Initialize LCD
 void lcd_init(void);
 //Clear screen

@@ -1,3 +1,0 @@
-[submodule "lib/dht11"]
-	path = lib/dht11
-	url = https://github.com/AntonG97/dht11-gd32vf103.git
