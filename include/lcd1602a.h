@@ -2,6 +2,8 @@
 #ifndef LCD1602A_DRIVER_H
 #define LCD1602A_DRIVER_H
 
+#include "gd32vf103.h"
+
 /**
  * Driver for LCD1602A for RISC-V processor Archirecture
  * Dependencies: Timer 5
